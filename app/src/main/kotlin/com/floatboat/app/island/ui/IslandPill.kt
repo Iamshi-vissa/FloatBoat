@@ -11,25 +11,35 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.floatboat.app.R
+import com.floatboat.app.core.cutout.PillMetrics
 
-/** Dimensions of the resting pill. Shared with window placement so both always agree. */
+/** Dimensions of the resting pill, before cutout fitting and user calibration. */
 object PillDefaults {
     val Width = 112.dp
     val Height = 32.dp
 
-    /** Gap kept from the top edge when the pill cannot be centred in the status bar. */
-    val MinTopMargin = 6.dp
+    val Metrics = PillMetrics(
+        widthDp = Width.value,
+        heightDp = Height.value,
+        minTopMarginDp = 6f,
+        cutoutPaddingDp = 4f,
+    )
 }
 
 /** The resting island: a black capsule. Stateless; later phases drive it from `IslandState`. */
 @Composable
-fun IslandPill(modifier: Modifier = Modifier) {
+fun IslandPill(
+    modifier: Modifier = Modifier,
+    width: Dp = PillDefaults.Width,
+    height: Dp = PillDefaults.Height,
+) {
     val description = stringResource(R.string.pill_content_description)
     Box(
         modifier = modifier
-            .size(width = PillDefaults.Width, height = PillDefaults.Height)
+            .size(width = width, height = height)
             .background(color = Color.Black, shape = RoundedCornerShape(percent = 50))
             .semantics { contentDescription = description },
     )

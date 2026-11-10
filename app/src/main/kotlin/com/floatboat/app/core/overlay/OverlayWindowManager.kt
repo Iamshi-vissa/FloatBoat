@@ -1,22 +1,21 @@
 package com.floatboat.app.core.overlay
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
-import android.hardware.display.DisplayManager
 import android.os.Build
 import android.util.Log
-import android.view.Display
 import android.view.Gravity
-import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.annotation.MainThread
 import androidx.compose.runtime.Composable
-import com.floatboat.app.island.ui.PillDefaults
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.roundToInt
+
+/**
+ * Where the overlay window sits: [xFromCentrePx] is the horizontal distance of its centre from
+ * the screen centre (negative is left), [yPx] the distance of its top from the top of the screen.
+ */
+data class OverlayPosition(val xFromCentrePx: Int, val yPx: Int)
 
 /**
  * The only place that talks to [WindowManager] for the island overlay.
@@ -26,9 +25,8 @@ import kotlin.math.roundToInt
  */
 @Singleton
 class OverlayWindowManager @Inject constructor(
-    @param:ApplicationContext private val appContext: Context,
+    @param:OverlayWindowContext private val windowContext: Context,
 ) {
-    private val windowContext: Context = createWindowContext()
     private val windowManager: WindowManager =
         windowContext.getSystemService(WindowManager::class.java)
 
@@ -37,15 +35,15 @@ class OverlayWindowManager @Inject constructor(
     val isShowing: Boolean get() = host != null
 
     /**
-     * Adds the overlay window with [content]. Returns false if the system refused the window,
+     * Adds the overlay window at [position] with [content]. Returns false if the system refused the window,
      * which happens when the overlay permission was revoked while the service was running.
      */
     @MainThread
-    fun show(content: @Composable () -> Unit): Boolean {
+    fun show(position: OverlayPosition, content: @Composable () -> Unit): Boolean {
         if (host != null) return true
         val newHost = ComposeOverlayHost(windowContext).apply { setContent(content) }
         return try {
-            windowManager.addView(newHost.view, buildLayoutParams())
+            windowManager.addView(newHost.view, buildLayoutParams(position))
             newHost.onShown()
             host = newHost
             true
@@ -62,15 +60,14 @@ class OverlayWindowManager @Inject constructor(
     }
 
     /**
-     * Re-applies layout params after a configuration change. Gravity keeps the pill centred
-     * by itself; the top offset has to be recomputed because the status bar height differs
-     * between portrait and landscape and across fold states.
+     * Moves the window. The window is anchored by its centre, so it stays centred on
+     * [position] when its content changes size.
      */
     @MainThread
-    fun onConfigurationChanged() {
+    fun updatePosition(position: OverlayPosition) {
         val current = host ?: return
         try {
-            windowManager.updateViewLayout(current.view, buildLayoutParams())
+            windowManager.updateViewLayout(current.view, buildLayoutParams(position))
         } catch (e: IllegalArgumentException) {
             // The system already dropped the view (e.g. permission revoked). Forget it.
             Log.w(TAG, "Overlay view no longer attached", e)
@@ -94,13 +91,7 @@ class OverlayWindowManager @Inject constructor(
         }
     }
 
-    private fun buildLayoutParams(): WindowManager.LayoutParams {
-        val density = windowContext.resources.displayMetrics.density
-        val topOffset = PillPlacement.topOffsetPx(
-            statusBarHeightPx = statusBarHeightPx(),
-            pillHeightPx = (PillDefaults.Height.value * density).roundToInt(),
-            minMarginPx = (PillDefaults.MinTopMargin.value * density).roundToInt(),
-        )
+    private fun buildLayoutParams(position: OverlayPosition): WindowManager.LayoutParams {
         return WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -115,7 +106,8 @@ class OverlayWindowManager @Inject constructor(
             PixelFormat.TRANSLUCENT,
         ).apply {
             gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            y = topOffset
+            x = position.xFromCentrePx
+            y = position.yPx
             title = "Floatboat"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 layoutInDisplayCutoutMode =
@@ -125,32 +117,6 @@ class OverlayWindowManager @Inject constructor(
                     WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-    }
-
-    @SuppressLint("InternalInsetResource", "DiscouragedApi")
-    private fun statusBarHeightPx(): Int {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            return windowManager.currentWindowMetrics.windowInsets
-                .getInsetsIgnoringVisibility(WindowInsets.Type.statusBars())
-                .top
-        }
-        // Before API 30 there is no public way to read insets without an attached view.
-        val resources = windowContext.resources
-        val id = resources.getIdentifier("status_bar_height", "dimen", "android")
-        return if (id != 0) resources.getDimensionPixelSize(id) else 0
-    }
-
-    /**
-     * From Android 11 a WindowManager must come from a context associated with a display and a
-     * window type; the application context is neither, and using it reports the wrong metrics
-     * after rotation. Older versions have no such notion, so the app context is correct there.
-     */
-    private fun createWindowContext(): Context {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return appContext
-        val display = appContext.getSystemService(DisplayManager::class.java)
-            .getDisplay(Display.DEFAULT_DISPLAY)
-        return appContext.createDisplayContext(display)
-            .createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
     }
 
     private companion object {

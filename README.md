@@ -9,17 +9,20 @@ battery.
 
 ## STATUS
 
-Phases 0 and 1 of the build plan are done:
+Phases 0, 1 and 2 of the build plan are done:
 
 - Gradle project with version catalog, Hilt and Compose
 - Onboarding screen that walks through the "Display over other apps" permission (and the
   notification permission on Android 13+)
 - Foreground service that keeps the pill alive in the background, with a quiet status
   notification and a Stop action
-- A black rounded pill at the top centre of the screen, drawn over other apps, that stays in
-  place across rotation
+- A black rounded pill drawn over other apps that stays in place across rotation
+- Cutout awareness: the pill centres itself on the camera hole and grows to cover it, and
+  falls back to the centre of the status bar when there is no cutout on the top edge
+- "Position and size" sliders for manual calibration, saved across restarts
 
-Not yet verified on a physical device or emulator. See [docs/BACKLOG.md](docs/BACKLOG.md).
+Phase 1 was checked on a real phone (Infinix GT 30 5G, Android 16). Phase 2 is covered by
+automated tests only so far. See [docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## TECH STACK
 
@@ -75,19 +78,22 @@ Install on a connected device or emulator:
 2. Tap **Grant** under "Display over other apps" and turn the switch on in system settings,
    then go back.
 3. Optionally grant notifications (Android 13+).
-4. Turn on **Floating pill**. Leave the app: the pill stays at the top of the screen.
-5. Rotate the device: the pill stays centred at the top.
-6. Stop it from the switch in the app or the **Stop** button in the notification.
+4. Turn on **Floating pill**. Leave the app: the pill stays over the camera cutout.
+5. If it is not lined up, adjust it with the **Position and size** sliders in the app.
+6. Rotate the device: the pill moves to the top centre.
+7. Stop it from the switch in the app or the **Stop** button in the notification.
 
 ## PROJECT STRUCTURE
 
 ```
 app/src/main/kotlin/com/floatboat/app/
+ ├─ core/cutout/         Cutout detection and pill placement maths
  ├─ core/overlay/        Overlay window management and the Compose host
  ├─ core/permissions/    Overlay and notification permission checks
  ├─ island/ui/           The pill composable
  ├─ services/            Foreground service that owns the overlay
  ├─ onboarding/          Permission walkthrough screen
+ ├─ settings/            Saved position and size calibration
  └─ ui/theme/            Material 3 theme
 docs/
  ├─ ARCHITECTURE.md      How the pieces fit together
@@ -100,8 +106,8 @@ docs/
 | ----- | ------------------------------------------------- | ------- |
 | 0     | Project setup                                     | Done    |
 | 1     | Overlay foundation                                | Done    |
-| 2     | Cutout awareness and positioning                  | Next    |
-| 3     | State machine and animation                       | Planned |
+| 2     | Cutout awareness and positioning                  | Done    |
+| 3     | State machine and animation                       | Next    |
 | 4     | Music provider                                    | Planned |
 | 5     | Calls, timers, charging, notifications, Bluetooth | Planned |
 | 6     | Priority and multi-event handling                 | Planned |

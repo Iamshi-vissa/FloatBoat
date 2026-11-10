@@ -37,6 +37,7 @@ fun OnboardingScreen(
     onGrantNotifications: () -> Unit,
     onIslandToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    placementSettings: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -75,6 +76,9 @@ fun OnboardingScreen(
                 running = state.islandRunning,
                 onToggle = onIslandToggle,
             )
+            if (state.overlayGranted) {
+                placementSettings()
+            }
 
             Text(
                 text = stringResource(R.string.privacy_note),

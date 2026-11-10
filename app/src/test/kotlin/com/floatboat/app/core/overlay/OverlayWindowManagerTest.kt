@@ -37,8 +37,10 @@ class OverlayWindowManagerTest {
     @Before
     fun setUp() {
         ShadowSettings.setCanDrawOverlays(true)
-        overlay = OverlayWindowManager(app)
+        overlay = OverlayWindowManager(createOverlayWindowContext(app))
     }
+
+    private val position = OverlayPosition(xFromCentrePx = 12, yPx = 40)
 
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
@@ -50,7 +52,7 @@ class OverlayWindowManagerTest {
     fun `show attaches a composing view without an Activity`() {
         var composed = false
 
-        val shown = overlay.show {
+        val shown = overlay.show(position) {
             // rememberSaveable needs the SavedStateRegistryOwner the host provides.
             rememberSaveable { 1 }
             SideEffect { composed = true }
@@ -69,7 +71,7 @@ class OverlayWindowManagerTest {
 
     @Test
     fun `window is a non-focusable overlay anchored top centre`() {
-        overlay.show {}
+        overlay.show(position) {}
         idle()
 
         val params = overlayViews().single().layoutParams as WindowManager.LayoutParams
@@ -78,13 +80,14 @@ class OverlayWindowManagerTest {
         assertNotEquals(0, params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
         assertEquals(WindowManager.LayoutParams.WRAP_CONTENT, params.width)
         assertEquals(WindowManager.LayoutParams.WRAP_CONTENT, params.height)
-        assertTrue("pill must keep a gap from the top edge", params.y > 0)
+        assertEquals(12, params.x)
+        assertEquals(40, params.y)
     }
 
     @Test
     fun `show is idempotent`() {
-        overlay.show {}
-        overlay.show {}
+        overlay.show(position) {}
+        overlay.show(position) {}
         idle()
 
         assertEquals(1, overlayViews().size)
@@ -93,7 +96,7 @@ class OverlayWindowManagerTest {
     @Test
     fun `hide removes the window and disposes the composition`() {
         var disposed = false
-        overlay.show {
+        overlay.show(position) {
             DisposableEffect(Unit) { onDispose { disposed = true } }
         }
         idle()
@@ -109,24 +112,33 @@ class OverlayWindowManagerTest {
     }
 
     @Test
-    fun `hide and configuration change are safe when nothing is shown`() {
+    fun `hide and move are safe when nothing is shown`() {
         overlay.hide()
-        overlay.onConfigurationChanged()
+        overlay.updatePosition(position)
 
         assertFalse(overlay.isShowing)
     }
 
     @Test
-    fun `survives a configuration change and can be shown again after hide`() {
-        overlay.show {}
+    fun `updatePosition moves the existing window`() {
+        overlay.show(position) {}
         idle()
 
-        overlay.onConfigurationChanged()
+        overlay.updatePosition(OverlayPosition(xFromCentrePx = -30, yPx = 55))
         idle()
-        assertEquals(1, overlayViews().size)
+
+        val params = overlayViews().single().layoutParams as WindowManager.LayoutParams
+        assertEquals(-30, params.x)
+        assertEquals(55, params.y)
+    }
+
+    @Test
+    fun `can be shown again after hide`() {
+        overlay.show(position) {}
+        idle()
 
         overlay.hide()
-        assertTrue(overlay.show {})
+        assertTrue(overlay.show(position) {})
         idle()
         assertEquals(1, overlayViews().size)
     }

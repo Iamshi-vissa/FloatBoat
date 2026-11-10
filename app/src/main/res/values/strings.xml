@@ -16,6 +16,13 @@
     <string name="island_step_body_blocked">Grant \"Display over other apps\" first.</string>
     <string name="island_switch_description">Show the floating pill</string>
 
+    <string name="placement_title">Position and size</string>
+    <string name="placement_body">Floatboat lines the pill up with your camera cutout automatically. Use these if it is not quite right on your phone.</string>
+    <string name="placement_offset_y">Move down or up: %1$d dp</string>
+    <string name="placement_offset_x">Move right or left: %1$d dp</string>
+    <string name="placement_size">Size: %1$d%%</string>
+    <string name="placement_reset">Reset to automatic</string>
+
     <string name="privacy_note">Floatboat works entirely on your device. It has no internet permission.</string>
 
     <string name="notification_channel_name">Floatboat status</string>

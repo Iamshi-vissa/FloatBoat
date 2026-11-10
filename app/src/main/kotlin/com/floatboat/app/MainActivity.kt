@@ -17,6 +17,8 @@ import com.floatboat.app.core.permissions.PermissionManager
 import com.floatboat.app.onboarding.OnboardingScreen
 import com.floatboat.app.onboarding.OnboardingViewModel
 import com.floatboat.app.services.FloatboatService
+import com.floatboat.app.settings.PlacementSettingsCard
+import com.floatboat.app.settings.PlacementSettingsViewModel
 import com.floatboat.app.ui.theme.FloatboatTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -27,6 +29,7 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var permissionManager: PermissionManager
 
     private val viewModel: OnboardingViewModel by viewModels()
+    private val placementViewModel: PlacementSettingsViewModel by viewModels()
 
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -38,12 +41,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
+            val placement by placementViewModel.settings.collectAsStateWithLifecycle()
             FloatboatTheme {
                 OnboardingScreen(
                     state = state,
                     onGrantOverlay = ::openOverlaySettings,
                     onGrantNotifications = ::askForNotifications,
                     onIslandToggle = ::setIslandEnabled,
+                    placementSettings = {
+                        PlacementSettingsCard(
+                            settings = placement,
+                            onOffsetXChange = placementViewModel::setOffsetX,
+                            onOffsetYChange = placementViewModel::setOffsetY,
+                            onSizeScaleChange = placementViewModel::setSizeScale,
+                            onReset = placementViewModel::reset,
+                        )
+                    },
                 )
             }
         }

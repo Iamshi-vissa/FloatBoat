@@ -12,15 +12,33 @@ import android.content.res.Configuration
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.floatboat.app.MainActivity
 import com.floatboat.app.R
+import com.floatboat.app.core.cutout.CutoutDetector
+import com.floatboat.app.core.cutout.PillLayout
+import com.floatboat.app.core.cutout.PillPlacement
+import com.floatboat.app.core.overlay.OverlayPosition
 import com.floatboat.app.core.overlay.OverlayWindowManager
 import com.floatboat.app.core.permissions.PermissionChecker
 import com.floatboat.app.island.ui.IslandPill
+import com.floatboat.app.island.ui.PillDefaults
+import com.floatboat.app.settings.PlacementSettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -36,6 +54,12 @@ class FloatboatService : Service() {
     @Inject lateinit var overlay: OverlayWindowManager
     @Inject lateinit var permissions: PermissionChecker
     @Inject lateinit var serviceState: IslandServiceState
+    @Inject lateinit var cutoutDetector: CutoutDetector
+    @Inject lateinit var placementSettings: PlacementSettingsRepository
+
+    private val scope = MainScope()
+    private val pillLayout = MutableStateFlow(PillLayout(0, 0, 0, 0))
+    private var placementJob: Job? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,9 +79,18 @@ class FloatboatService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (!overlay.show { IslandPill() }) {
+        val layout = computeLayout()
+        pillLayout.value = layout
+        val shown = overlay.show(layout.position()) {
+            IslandOverlayContent(pillLayout, onConfigurationChanged = ::applyLayout)
+        }
+        if (!shown) {
             stopSelf()
             return START_NOT_STICKY
+        }
+        if (placementJob == null) {
+            // Follow calibration changes live while the user drags the sliders.
+            placementJob = scope.launch { placementSettings.settings.collect { applyLayout() } }
         }
         serviceState.setRunning(true)
         // If the process is killed for memory, bring the island back (intent will be null).
@@ -66,15 +99,30 @@ class FloatboatService : Service() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        // Rotation / fold: the window itself survives, only its offset needs recomputing.
-        overlay.onConfigurationChanged()
+        // Rotation / fold: the window itself survives, its position and size are recomputed.
+        applyLayout()
     }
 
     override fun onDestroy() {
+        scope.cancel()
         overlay.hide()
         serviceState.setRunning(false)
         super.onDestroy()
     }
+
+    private fun computeLayout(): PillLayout = PillPlacement.compute(
+        screen = cutoutDetector.detect(),
+        settings = placementSettings.settings.value,
+        metrics = PillDefaults.Metrics,
+    )
+
+    private fun applyLayout() {
+        val layout = computeLayout()
+        pillLayout.value = layout
+        overlay.updatePosition(layout.position())
+    }
+
+    private fun PillLayout.position() = OverlayPosition(xFromCentrePx, yPx)
 
     /** Returns false if the system refused to promote the service to the foreground. */
     private fun enterForeground(): Boolean {
@@ -154,5 +202,26 @@ class FloatboatService : Service() {
         fun stop(context: Context) {
             context.stopService(Intent(context, FloatboatService::class.java))
         }
+    }
+}
+
+/**
+ * Overlay content: the pill at its computed size.
+ *
+ * The overlay view receives configuration changes together with its window, which can be a
+ * moment after the service does, so the layout is recomputed from here as well. That way the
+ * final layout is always based on up-to-date screen metrics.
+ */
+@Composable
+private fun IslandOverlayContent(
+    layout: StateFlow<PillLayout>,
+    onConfigurationChanged: () -> Unit,
+) {
+    val configuration = LocalConfiguration.current
+    LaunchedEffect(configuration) { onConfigurationChanged() }
+
+    val current by layout.collectAsState()
+    with(LocalDensity.current) {
+        IslandPill(width = current.widthPx.toDp(), height = current.heightPx.toDp())
     }
 }
