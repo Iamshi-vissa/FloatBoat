@@ -1,0 +1,68 @@
+package com.floatboat.app.core.permissions
+
+import android.Manifest
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.content.ContextCompat
+import dagger.Binds
+import dagger.Module
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Inject
+import javax.inject.Singleton
+
+/**
+ * Read-only view of the permissions Floatboat depends on.
+ *
+ * Kept as an interface so view models and the service can be tested with a fake.
+ */
+interface PermissionChecker {
+    /** `SYSTEM_ALERT_WINDOW`: without it no overlay window can be added. */
+    fun canDrawOverlays(): Boolean
+
+    /** False only on Android 13+ when the user has not granted `POST_NOTIFICATIONS`. */
+    fun canPostNotifications(): Boolean
+
+    /** Whether `POST_NOTIFICATIONS` is a runtime permission on this OS version. */
+    val notificationPermissionIsRuntime: Boolean
+}
+
+@Singleton
+class PermissionManager @Inject constructor(
+    @param:ApplicationContext private val context: Context,
+) : PermissionChecker {
+
+    override fun canDrawOverlays(): Boolean = Settings.canDrawOverlays(context)
+
+    override val notificationPermissionIsRuntime: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+
+    override fun canPostNotifications(): Boolean =
+        !notificationPermissionIsRuntime ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    /**
+     * Intent for the system "Display over other apps" screen for this app.
+     *
+     * The overlay permission is a special app-op: it cannot be requested with a runtime
+     * dialog, the user has to flip the switch in Settings and come back.
+     */
+    fun overlaySettingsIntent(): Intent =
+        Intent(
+            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.fromParts("package", context.packageName, null),
+        )
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class PermissionModule {
+    @Binds
+    abstract fun bindPermissionChecker(impl: PermissionManager): PermissionChecker
+}

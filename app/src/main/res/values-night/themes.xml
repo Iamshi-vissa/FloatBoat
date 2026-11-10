@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.Floatboat" parent="android:Theme.Material.NoActionBar" />
+</resources>

@@ -1,0 +1,4 @@
+<resources>
+    <!-- Window theme only; all in-app styling is Compose Material 3. -->
+    <style name="Theme.Floatboat" parent="android:Theme.Material.Light.NoActionBar" />
+</resources>

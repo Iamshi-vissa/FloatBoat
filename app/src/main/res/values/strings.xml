@@ -1,0 +1,28 @@
+<resources>
+    <string name="app_name">Floatboat</string>
+
+    <string name="onboarding_title">Set up Floatboat</string>
+    <string name="onboarding_subtitle">Floatboat shows a small floating pill at the top of your screen. It needs a couple of permissions to do that.</string>
+
+    <string name="overlay_step_title">Display over other apps</string>
+    <string name="overlay_step_body">Required. Floatboat uses this only to draw the pill on top of whatever app you are using. It does not read or capture what is on your screen.</string>
+    <string name="notifications_step_title">Notifications</string>
+    <string name="notifications_step_body">Optional. Android shows a quiet status notification while the pill is running, with a button to stop it.</string>
+    <string name="action_grant">Grant</string>
+    <string name="status_granted">Granted</string>
+
+    <string name="island_step_title">Floating pill</string>
+    <string name="island_step_body_ready">Turn the pill on. It stays visible over other apps until you turn it off.</string>
+    <string name="island_step_body_blocked">Grant \"Display over other apps\" first.</string>
+    <string name="island_switch_description">Show the floating pill</string>
+
+    <string name="privacy_note">Floatboat works entirely on your device. It has no internet permission.</string>
+
+    <string name="notification_channel_name">Floatboat status</string>
+    <string name="notification_channel_description">Shown while the floating pill is running.</string>
+    <string name="notification_title">Floatboat is running</string>
+    <string name="notification_text">The floating pill is showing over other apps.</string>
+    <string name="notification_action_stop">Stop</string>
+
+    <string name="pill_content_description">Floatboat pill</string>
+</resources>
