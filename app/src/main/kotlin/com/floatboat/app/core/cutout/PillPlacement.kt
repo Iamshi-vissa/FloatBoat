@@ -28,6 +28,12 @@ data class PillMetrics(
     val minTopMarginDp: Float,
     /** How far the pill extends past the camera hole on each side. */
     val cutoutPaddingDp: Float,
+    /** Widest the expanded island gets; it is narrower on small screens. */
+    val expandedWidthDp: Float,
+    /** Room for details below the compact row when expanded. */
+    val expandedExtraHeightDp: Float,
+    /** Gap the expanded island keeps from the screen's side edges. */
+    val screenMarginDp: Float,
 )
 
 /** Where the pill goes and how big it is, in pixels. */
@@ -38,6 +44,13 @@ data class PillLayout(
     val xFromCentrePx: Int,
     /** Distance from the top of the screen to the top of the pill. */
     val yPx: Int,
+    val expandedWidthPx: Int,
+    val expandedHeightPx: Int,
+    /**
+     * Like [xFromCentrePx] but for the expanded island, which is wider and therefore cannot
+     * follow an off-centre camera hole as far before it would leave the screen.
+     */
+    val expandedXFromCentrePx: Int,
 )
 
 /** Pure placement maths, free of Android types so it is unit-testable. */
@@ -86,11 +99,20 @@ object PillPlacement {
         y += px(settings.offsetYDp)
 
         val maxX = max((screen.widthPx - width) / 2, 0)
+        val margin = px(metrics.screenMarginDp)
+        val expandedWidth = max(
+            min(px(metrics.expandedWidthDp), screen.widthPx - 2 * margin),
+            width,
+        )
+        val maxExpandedX = max((screen.widthPx - expandedWidth) / 2 - margin, 0)
         return PillLayout(
             widthPx = width,
             heightPx = height,
             xFromCentrePx = x.coerceIn(-maxX, maxX),
             yPx = max(y, 0),
+            expandedWidthPx = expandedWidth,
+            expandedHeightPx = height + px(metrics.expandedExtraHeightDp),
+            expandedXFromCentrePx = x.coerceIn(-maxExpandedX, maxExpandedX),
         )
     }
 }

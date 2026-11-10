@@ -13,6 +13,9 @@ class PillPlacementTest {
         heightDp = 32f,
         minTopMarginDp = 6f,
         cutoutPaddingDp = 4f,
+        expandedWidthDp = 340f,
+        expandedExtraHeightDp = 56f,
+        screenMarginDp = 12f,
     )
 
     private fun screen(statusBar: Int = 140, cutout: CutoutBounds? = null) = ScreenGeometry(
@@ -29,7 +32,12 @@ class PillPlacementTest {
 
     @Test
     fun `without a cutout the pill is centred in the status bar`() {
-        assertEquals(PillLayout(336, 96, 0, 22), compute(screen(statusBar = 140)))
+        val layout = compute(screen(statusBar = 140))
+
+        assertEquals(336, layout.widthPx)
+        assertEquals(96, layout.heightPx)
+        assertEquals(0, layout.xFromCentrePx)
+        assertEquals(22, layout.yPx)
     }
 
     @Test
@@ -114,5 +122,23 @@ class PillPlacementTest {
 
         assertEquals((1080 - 336) / 2, layout.xFromCentrePx)
         assertEquals(0, layout.yPx)
+    }
+
+    @Test
+    fun `expanded island is wider and taller and capped to the screen`() {
+        // 340 dp = 1020 px, but a 1080 px screen with 36 px margins only has room for 1008.
+        val layout = compute(screen(cutout = CutoutBounds(500, 50, 580, 130)))
+
+        assertEquals(1008, layout.expandedWidthPx)
+        assertEquals(layout.heightPx + 168, layout.expandedHeightPx)
+        assertEquals(0, layout.expandedXFromCentrePx)
+    }
+
+    @Test
+    fun `expanded island stays on screen for an off-centre camera hole`() {
+        val layout = compute(screen(cutout = CutoutBounds(100, 50, 180, 130)))
+
+        val left = 540 + layout.expandedXFromCentrePx - layout.expandedWidthPx / 2
+        assertTrue("left edge on screen", left >= 0)
     }
 }

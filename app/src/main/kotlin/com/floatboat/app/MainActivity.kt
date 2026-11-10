@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onGrantOverlay = ::openOverlaySettings,
                     onGrantNotifications = ::askForNotifications,
+                    onGrantNotificationAccess = ::openNotificationAccessSettings,
                     onIslandToggle = ::setIslandEnabled,
                     placementSettings = {
                         PlacementSettingsCard(
@@ -74,6 +75,14 @@ class MainActivity : ComponentActivity() {
         } catch (_: ActivityNotFoundException) {
             // A few OEM builds lack the per-app screen; the app-wide list always exists.
             startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
+        }
+    }
+
+    private fun openNotificationAccessSettings() {
+        try {
+            startActivity(permissionManager.notificationAccessSettingsIntent())
+        } catch (_: ActivityNotFoundException) {
+            // Extremely rare (some Android Go builds). The step simply stays ungranted.
         }
     }
 

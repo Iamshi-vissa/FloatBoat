@@ -17,6 +17,7 @@ data class OnboardingUiState(
     /** False on Android 12 and below, where there is nothing to ask for. */
     val showNotificationStep: Boolean,
     val notificationsGranted: Boolean,
+    val notificationAccessGranted: Boolean,
     val islandRunning: Boolean,
 )
 
@@ -26,7 +27,11 @@ class OnboardingViewModel @Inject constructor(
     serviceState: IslandServiceState,
 ) : ViewModel() {
 
-    private data class Permissions(val overlay: Boolean, val notifications: Boolean)
+    private data class Permissions(
+        val overlay: Boolean,
+        val notifications: Boolean,
+        val notificationAccess: Boolean,
+    )
 
     private val permissionState = MutableStateFlow(readPermissions())
 
@@ -49,12 +54,14 @@ class OnboardingViewModel @Inject constructor(
     private fun readPermissions() = Permissions(
         overlay = permissions.canDrawOverlays(),
         notifications = permissions.canPostNotifications(),
+        notificationAccess = permissions.hasNotificationAccess(),
     )
 
     private fun toUiState(permissions: Permissions, running: Boolean) = OnboardingUiState(
         overlayGranted = permissions.overlay,
         showNotificationStep = this.permissions.notificationPermissionIsRuntime,
         notificationsGranted = permissions.notifications,
+        notificationAccessGranted = permissions.notificationAccess,
         // The service removes itself if the overlay permission is revoked; never show "on"
         // without the permission even if the two updates arrive out of order.
         islandRunning = running && permissions.overlay,

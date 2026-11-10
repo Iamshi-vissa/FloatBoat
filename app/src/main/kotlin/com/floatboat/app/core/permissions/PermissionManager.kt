@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.Binds
 import dagger.Module
@@ -30,6 +31,9 @@ interface PermissionChecker {
 
     /** Whether `POST_NOTIFICATIONS` is a runtime permission on this OS version. */
     val notificationPermissionIsRuntime: Boolean
+
+    /** Notification access: lets the island react to other apps' notifications and calls. */
+    fun hasNotificationAccess(): Boolean
 }
 
 @Singleton
@@ -46,6 +50,13 @@ class PermissionManager @Inject constructor(
         !notificationPermissionIsRuntime ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+
+    override fun hasNotificationAccess(): Boolean =
+        NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+    /** Intent for the system screen where the user grants notification access. */
+    fun notificationAccessSettingsIntent(): Intent =
+        Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
 
     /**
      * Intent for the system "Display over other apps" screen for this app.

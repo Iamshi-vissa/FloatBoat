@@ -18,6 +18,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.DpSize
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -29,20 +30,23 @@ import com.floatboat.app.core.cutout.PillPlacement
 import com.floatboat.app.core.overlay.OverlayPosition
 import com.floatboat.app.core.overlay.OverlayWindowManager
 import com.floatboat.app.core.permissions.PermissionChecker
-import com.floatboat.app.island.ui.IslandPill
+import com.floatboat.app.island.IslandState
+import com.floatboat.app.island.IslandStateMachine
+import com.floatboat.app.island.ui.Island
 import com.floatboat.app.island.ui.PillDefaults
+import com.floatboat.app.providers.EventProvider
 import com.floatboat.app.settings.PlacementSettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Foreground service that owns the island overlay for as long as the user wants it visible.
+ * Foreground service that owns the island overlay for as long as the user has it switched on.
  *
  * A foreground service is what keeps the process (and therefore the overlay window) alive
  * while the app has no visible Activity. Its lifetime *is* the island's lifetime: the overlay
@@ -57,9 +61,12 @@ class FloatboatService : Service() {
     @Inject lateinit var cutoutDetector: CutoutDetector
     @Inject lateinit var placementSettings: PlacementSettingsRepository
 
+    @Inject lateinit var providers: Set<@JvmSuppressWildcards EventProvider>
+
     private val scope = MainScope()
-    private val pillLayout = MutableStateFlow(PillLayout(0, 0, 0, 0))
-    private var placementJob: Job? = null
+    private val stateMachine = IslandStateMachine(scope)
+    private val pillLayout = MutableStateFlow(PillLayout(0, 0, 0, 0, 0, 0, 0))
+    private var collectorsStarted = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -81,16 +88,31 @@ class FloatboatService : Service() {
         }
         val layout = computeLayout()
         pillLayout.value = layout
+        // The window is added now but its content is empty until an event arrives, so
+        // nothing is visible and nothing intercepts touches while the island is idle.
         val shown = overlay.show(layout.position()) {
-            IslandOverlayContent(pillLayout, onConfigurationChanged = ::applyLayout)
+            IslandOverlayContent(
+                layout = pillLayout,
+                state = stateMachine.state,
+                onConfigurationChanged = ::applyLayout,
+                onTap = stateMachine::onTap,
+                onLongPress = ::openApp,
+                onDismiss = stateMachine::onDismiss,
+            )
         }
         if (!shown) {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (placementJob == null) {
-            // Follow calibration changes live while the user drags the sliders.
-            placementJob = scope.launch { placementSettings.settings.collect { applyLayout() } }
+        if (!collectorsStarted) {
+            collectorsStarted = true
+            scope.launch {
+                providers.map { it.signals }.merge().collect(stateMachine::onSignal)
+            }
+            // Follow calibration changes live, and move the window when the island
+            // expands (the expanded island may sit differently on off-centre cutouts).
+            scope.launch { placementSettings.settings.collect { applyLayout() } }
+            scope.launch { stateMachine.state.collect { applyLayout() } }
         }
         serviceState.setRunning(true)
         // If the process is killed for memory, bring the island back (intent will be null).
@@ -104,6 +126,7 @@ class FloatboatService : Service() {
     }
 
     override fun onDestroy() {
+        stateMachine.clear()
         scope.cancel()
         overlay.hide()
         serviceState.setRunning(false)
@@ -122,7 +145,21 @@ class FloatboatService : Service() {
         overlay.updatePosition(layout.position())
     }
 
-    private fun PillLayout.position() = OverlayPosition(xFromCentrePx, yPx)
+    private fun PillLayout.position() = OverlayPosition(
+        xFromCentrePx = if (stateMachine.state.value is IslandState.Expanded) {
+            expandedXFromCentrePx
+        } else {
+            xFromCentrePx
+        },
+        yPx = yPx,
+    )
+
+    /** Long-press: open Floatboat. Allowed from the background for apps with an overlay. */
+    private fun openApp() {
+        startActivity(
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
 
     /** Returns false if the system refused to promote the service to the foreground. */
     private fun enterForeground(): Boolean {
@@ -206,7 +243,7 @@ class FloatboatService : Service() {
 }
 
 /**
- * Overlay content: the pill at its computed size.
+ * Overlay content: the island at its computed size.
  *
  * The overlay view receives configuration changes together with its window, which can be a
  * moment after the service does, so the layout is recomputed from here as well. That way the
@@ -215,13 +252,28 @@ class FloatboatService : Service() {
 @Composable
 private fun IslandOverlayContent(
     layout: StateFlow<PillLayout>,
+    state: StateFlow<IslandState>,
     onConfigurationChanged: () -> Unit,
+    onTap: () -> Unit,
+    onLongPress: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
     val configuration = LocalConfiguration.current
     LaunchedEffect(configuration) { onConfigurationChanged() }
 
     val current by layout.collectAsState()
+    val islandState by state.collectAsState()
     with(LocalDensity.current) {
-        IslandPill(width = current.widthPx.toDp(), height = current.heightPx.toDp())
+        Island(
+            state = islandState,
+            compactSize = DpSize(current.widthPx.toDp(), current.heightPx.toDp()),
+            expandedSize = DpSize(
+                current.expandedWidthPx.toDp(),
+                current.expandedHeightPx.toDp(),
+            ),
+            onTap = onTap,
+            onLongPress = onLongPress,
+            onDismiss = onDismiss,
+        )
     }
 }

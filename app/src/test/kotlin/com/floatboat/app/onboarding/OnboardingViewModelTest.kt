@@ -30,6 +30,7 @@ class OnboardingViewModelTest {
         every { permissions.canDrawOverlays() } returns false
         every { permissions.canPostNotifications() } returns false
         every { permissions.notificationPermissionIsRuntime } returns true
+        every { permissions.hasNotificationAccess() } returns false
     }
 
     @After
@@ -46,6 +47,7 @@ class OnboardingViewModelTest {
                 overlayGranted = false,
                 showNotificationStep = true,
                 notificationsGranted = false,
+                notificationAccessGranted = false,
                 islandRunning = false,
             ),
             viewModel.uiState.value,
@@ -110,5 +112,19 @@ class OnboardingViewModelTest {
 
         assertFalse(viewModel.uiState.value.showNotificationStep)
         assertTrue(viewModel.uiState.value.notificationsGranted)
+    }
+
+    @Test
+    fun `refresh picks up notification access`() = runTest {
+        val viewModel = OnboardingViewModel(permissions, serviceState)
+        assertFalse(viewModel.uiState.value.notificationAccessGranted)
+
+        viewModel.uiState.test {
+            awaitItem()
+            every { permissions.hasNotificationAccess() } returns true
+            viewModel.refreshPermissions()
+
+            assertTrue(awaitItem().notificationAccessGranted)
+        }
     }
 }

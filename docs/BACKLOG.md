@@ -4,10 +4,11 @@ Deferred work and known gaps. Phase numbers refer to the build plan.
 
 ## Not yet verified
 
-- **Phase 2 on a device.** Cutout detection and the calibration sliders are covered by unit and
-  Robolectric tests but have not yet been confirmed on a phone. To check: the pill covers the
-  camera hole without adjustment, the sliders move and resize it live, and the values survive
-  an app restart.
+- **Event-driven island on a device.** The state machine, providers, animations and window
+  sizing are covered by unit and Robolectric tests but have not yet been confirmed on a
+  phone. To check: nothing shows while idle; torch, charging, notifications and calls each
+  pop the pill; tap, swipe-up and long-press work; animations are smooth.
+- **Cutout positioning on a device.** Same: tests only so far.
 - **Foldables and Android 8 to 15.** Only one device (Infinix GT 30 5G, Android 16) has run
   the app so far.
 
@@ -19,7 +20,16 @@ Deferred work and known gaps. Phase numbers refer to the build plan.
   attached view there, so those versions use the status-bar position plus manual calibration.
 - **Fullscreen and landscape behaviour** (Phase 7). The pill stays visible in fullscreen apps
   and games.
-- **Touch handling** (Phase 3). The pill consumes taps on itself but does nothing with them yet.
+- **Haptics toggle** (Phase 3/7). Taps and long-presses always give haptic feedback.
+- **Long-press quick actions** (Phase 3). Long-press opens Floatboat for now.
+- **Tap-through to the source app** (Phase 5) for notifications and calls.
+- **Answer / decline on calls** (Phase 5). Only possible via the calling app's own
+  notification actions; not wired up yet.
+- **Per-app allow/deny list and rate limiting** for notifications (Phase 5/6). Every
+  non-ongoing notification pops the island today, which can be busy in chat-heavy use.
+- **Music, timers, Bluetooth providers** (Phases 4 and 5).
+- **Split pill for two concurrent events** (Phase 6). Only the top-priority event shows.
+- **Off-centre cutouts when expanding.** The window shifts in one step, not animated.
 - **Compose UI tests on a device** (Phase 9). No `androidTest` source set yet.
 - **ktlint/detekt and release signing** (Phase 9). Only Android lint runs today; the release
   build is minified but unsigned.

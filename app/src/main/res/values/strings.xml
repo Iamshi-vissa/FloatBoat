@@ -2,17 +2,19 @@
     <string name="app_name">Floatboat</string>
 
     <string name="onboarding_title">Set up Floatboat</string>
-    <string name="onboarding_subtitle">Floatboat shows a small floating pill at the top of your screen. It needs a couple of permissions to do that.</string>
+    <string name="onboarding_subtitle">Floatboat shows a small pill at the top of your screen when something happens, then gets out of the way. It needs a couple of permissions to do that.</string>
 
     <string name="overlay_step_title">Display over other apps</string>
     <string name="overlay_step_body">Required. Floatboat uses this only to draw the pill on top of whatever app you are using. It does not read or capture what is on your screen.</string>
     <string name="notifications_step_title">Notifications</string>
     <string name="notifications_step_body">Optional. Android shows a quiet status notification while the pill is running, with a button to stop it.</string>
+    <string name="notification_access_step_title">Notification access</string>
+    <string name="notification_access_step_body">Optional. Lets the pill pop up for incoming calls and new notifications. Floatboat reads the app name, title and text only to show them in the pill. Nothing is stored or sent anywhere.</string>
     <string name="action_grant">Grant</string>
     <string name="status_granted">Granted</string>
 
     <string name="island_step_title">Floating pill</string>
-    <string name="island_step_body_ready">Turn the pill on. It stays visible over other apps until you turn it off.</string>
+    <string name="island_step_body_ready">Turn the pill on. It stays hidden and pops up for the torch, charging, calls and notifications. Tap it for details, swipe it up to dismiss.</string>
     <string name="island_step_body_blocked">Grant \"Display over other apps\" first.</string>
     <string name="island_switch_description">Show the floating pill</string>
 
@@ -28,8 +30,17 @@
     <string name="notification_channel_name">Floatboat status</string>
     <string name="notification_channel_description">Shown while the floating pill is running.</string>
     <string name="notification_title">Floatboat is running</string>
-    <string name="notification_text">The floating pill is showing over other apps.</string>
+    <string name="notification_text">The pill will appear when something happens.</string>
     <string name="notification_action_stop">Stop</string>
 
-    <string name="pill_content_description">Floatboat pill</string>
+
+    <string name="event_torch_title">Torch is on</string>
+    <string name="event_torch_subtitle">Turn it off from quick settings</string>
+    <string name="event_torch_compact">On</string>
+    <string name="event_charging_title">Charging</string>
+    <string name="event_charging_subtitle">Battery at %1$d%%</string>
+    <string name="event_charging_compact">%1$d%%</string>
+    <string name="event_call_title">Call</string>
+    <string name="event_call_compact">Call</string>
+    <string name="event_notification_fallback_title">New notification</string>
 </resources>

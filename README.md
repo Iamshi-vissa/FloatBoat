@@ -9,20 +9,26 @@ battery.
 
 ## STATUS
 
-Phases 0, 1 and 2 of the build plan are done:
+The pill stays hidden and pops up only when something happens, then goes away again.
 
-- Gradle project with version catalog, Hilt and Compose
-- Onboarding screen that walks through the "Display over other apps" permission (and the
-  notification permission on Android 13+)
-- Foreground service that keeps the pill alive in the background, with a quiet status
-  notification and a Stop action
-- A black rounded pill drawn over other apps that stays in place across rotation
-- Cutout awareness: the pill centres itself on the camera hole and grows to cover it, and
-  falls back to the centre of the status bar when there is no cutout on the top edge
-- "Position and size" sliders for manual calibration, saved across restarts
+What works today:
 
-Phase 1 was checked on a real phone (Infinix GT 30 5G, Android 16). Phase 2 is covered by
-automated tests only so far. See [docs/BACKLOG.md](docs/BACKLOG.md).
+- **Event-driven island:** hidden when idle; shows a compact pill for an event, expands on tap,
+  collapses by itself, and can be swiped up to dismiss. Spring animations between states.
+- **Torch:** shows while the flashlight is on.
+- **Charging:** pops up with the battery level when a charger is plugged in.
+- **Notifications:** pops up for new notifications (needs notification access).
+- **Calls:** shows while a call notification is active (needs notification access).
+- **Priorities:** a call takes over from a notification, which takes over from charging and
+  the torch; the lower one returns when the higher one ends.
+- **Cutout awareness:** the pill centres itself on the camera hole and covers it, with
+  "Position and size" sliders for manual calibration.
+- Onboarding for the overlay, notification and notification-access permissions, and a
+  foreground service that keeps the island available in the background.
+
+Checked on a real phone so far: the overlay foundation (Infinix GT 30 5G, Android 16). The
+event-driven behaviour and cutout positioning are covered by automated tests only. See
+[docs/BACKLOG.md](docs/BACKLOG.md).
 
 ## TECH STACK
 
@@ -77,11 +83,17 @@ Install on a connected device or emulator:
 1. Open Floatboat.
 2. Tap **Grant** under "Display over other apps" and turn the switch on in system settings,
    then go back.
-3. Optionally grant notifications (Android 13+).
-4. Turn on **Floating pill**. Leave the app: the pill stays over the camera cutout.
-5. If it is not lined up, adjust it with the **Position and size** sliders in the app.
-6. Rotate the device: the pill moves to the top centre.
-7. Stop it from the switch in the app or the **Stop** button in the notification.
+3. Optionally grant notifications (Android 13+) and notification access (for calls and
+   notification pop-ups).
+4. Turn on **Floating pill**. Nothing appears yet: the pill is waiting for an event.
+5. Turn on the flashlight from quick settings: the pill appears over the camera cutout and
+   stays while the torch is on.
+6. Tap the pill to expand it, tap again to collapse, swipe it up to dismiss, long-press to
+   open Floatboat.
+7. Plug in a charger, or have a notification or call arrive, to see the other events.
+8. If the pill is not lined up with the camera, adjust **Position and size** in the app
+   while an event is showing.
+9. Stop it from the switch in the app or the **Stop** button in the notification.
 
 ## PROJECT STRUCTURE
 
@@ -90,8 +102,10 @@ app/src/main/kotlin/com/floatboat/app/
  ├─ core/cutout/         Cutout detection and pill placement maths
  ├─ core/overlay/        Overlay window management and the Compose host
  ├─ core/permissions/    Overlay and notification permission checks
- ├─ island/ui/           The pill composable
- ├─ services/            Foreground service that owns the overlay
+ ├─ island/              Events, states and the state machine
+ ├─ island/ui/           The animated island and its content
+ ├─ providers/           Event sources: torch, charging, notifications and calls
+ ├─ services/            Foreground service that owns the overlay; notification listener
  ├─ onboarding/          Permission walkthrough screen
  ├─ settings/            Saved position and size calibration
  └─ ui/theme/            Material 3 theme
@@ -107,17 +121,19 @@ docs/
 | 0     | Project setup                                     | Done    |
 | 1     | Overlay foundation                                | Done    |
 | 2     | Cutout awareness and positioning                  | Done    |
-| 3     | State machine and animation                       | Next    |
-| 4     | Music provider                                    | Planned |
-| 5     | Calls, timers, charging, notifications, Bluetooth | Planned |
-| 6     | Priority and multi-event handling                 | Planned |
+| 3     | State machine and animation                       | Done    |
+| 4     | Music provider                                    | Next    |
+| 5     | Calls, timers, charging, notifications, Bluetooth | Partly  |
+| 6     | Priority and multi-event handling                 | Partly  |
 | 7     | Settings and customization                        | Planned |
 | 8     | Hardening (battery, boot, OEM limits)             | Planned |
 | 9     | Quality (tests, lint, release build)              | Planned |
 
 ## PRIVACY
 
-Floatboat declares no internet permission. Everything runs on the device.
+Floatboat declares no internet permission. Everything runs on the device. With notification
+access granted, it reads a notification's app name, title, text and category only to show
+them in the pill; nothing is stored.
 
 ## LICENSE
 

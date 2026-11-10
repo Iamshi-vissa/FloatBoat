@@ -35,6 +35,7 @@ fun OnboardingScreen(
     state: OnboardingUiState,
     onGrantOverlay: () -> Unit,
     onGrantNotifications: () -> Unit,
+    onGrantNotificationAccess: () -> Unit,
     onIslandToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     placementSettings: @Composable () -> Unit = {},
@@ -71,6 +72,12 @@ fun OnboardingScreen(
                     onGrant = onGrantNotifications,
                 )
             }
+            PermissionCard(
+                title = stringResource(R.string.notification_access_step_title),
+                body = stringResource(R.string.notification_access_step_body),
+                granted = state.notificationAccessGranted,
+                onGrant = onGrantNotificationAccess,
+            )
             IslandCard(
                 enabled = state.overlayGranted,
                 running = state.islandRunning,
@@ -169,10 +176,12 @@ private fun OnboardingScreenPreview() {
                 overlayGranted = true,
                 showNotificationStep = true,
                 notificationsGranted = false,
+                notificationAccessGranted = false,
                 islandRunning = false,
             ),
             onGrantOverlay = {},
             onGrantNotifications = {},
+            onGrantNotificationAccess = {},
             onIslandToggle = {},
         )
     }

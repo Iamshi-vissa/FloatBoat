@@ -3,7 +3,7 @@
 Single Gradle module (`app`), MVVM with unidirectional data flow, Hilt for dependency injection.
 Package root: `com.floatboat.app`.
 
-## What exists today (Phases 0 to 2)
+## What exists today
 
 ```
 com.floatboat.app
@@ -20,23 +20,68 @@ com.floatboat.app
  │   ├─ di/                        Application coroutine scope
  │   └─ permissions/
  │       └─ PermissionManager      Overlay + notification permission checks and intents
- ├─ island/ui/
- │   └─ IslandPill                 The resting pill composable and its dimensions
+ ├─ island/
+ │   ├─ IslandEvent                Events, provider signals and IslandState
+ │   ├─ IslandStateMachine         Signals + gestures -> IslandState
+ │   └─ ui/                        Island (animated pill) and per-event content
+ ├─ providers/
+ │   ├─ EventProvider              Interface: Flow<IslandSignal>
+ │   ├─ TorchProvider              CameraManager torch callback
+ │   ├─ ChargingProvider           Power connected / disconnected broadcasts
+ │   └─ NotificationProvider       Notifications and calls from the listener service
  ├─ services/
- │   ├─ FloatboatService           Foreground service; its lifetime is the island's lifetime
- │   └─ IslandServiceState         Process-wide "is the island showing" flag
+ │   ├─ FloatboatService           Foreground service; owns overlay and state machine
+ │   ├─ FloatboatNotificationListener  Forwards notifications to NotificationProvider
+ │   └─ IslandServiceState         Process-wide "is the island switched on" flag
  ├─ onboarding/                    OnboardingViewModel + OnboardingScreen
  ├─ settings/                      PlacementSettings, its repository (DataStore), view model
  │                                 and the "Position and size" card
  └─ ui/theme/                      Material 3 theme for in-app screens
 ```
 
-## How the pill gets on screen
+## Events, state and the island
+
+Every source implements `EventProvider` and emits `IslandSignal.Show(event)` or
+`IslandSignal.End(key)`. Providers are registered with Hilt multibindings
+(`ProvidersModule`), so adding a source is one class and one `@Binds @IntoSet` line.
+
+`FloatboatService` merges all provider flows into `IslandStateMachine`, which holds the active
+events and publishes one `IslandState`:
+
+- `Hidden` when no event is active. This is the resting state: nothing is drawn.
+- `Compact(event)` for the highest-priority active event (ties go to the newest).
+- `Expanded(event)` after a tap; it collapses after 6 seconds, on a second tap, or when a
+  more important event takes over.
+
+Momentary events (charging, notifications) carry a duration and remove themselves; the
+countdown pauses while expanded. Ongoing events (torch, call) stay until their source ends
+them. Swipe-up dismisses the current event and reveals the next one, if any.
+
+`Island` is a pure function of `IslandState`. The overlay window is `WRAP_CONTENT` around it,
+so while hidden the window is a 1 dp transparent dot that shows nothing and takes no touches.
+Because resizing a window every animation frame stutters, the composable's outer box jumps to
+the expanded size (plus slack for spring overshoot) when a morph starts and back to the
+compact size when it has finished; the black pill animates inside it.
+
+Providers only register system callbacks while the service collects them, and none of them
+poll, so an idle island does no work.
+
+### Notifications and calls
+
+`FloatboatNotificationListener` is bound by the system once the user grants notification
+access. It extracts app name, title, text, category and flags and hands them to the
+`NotificationProvider` singleton, whose pure `toEvent()` decides what reaches the island:
+category `call` becomes an ongoing `Call` event; other non-ongoing notifications become
+momentary `Notification` events; our own, ongoing, group-summary and empty notifications are
+dropped. Call control (answer/decline) is not possible for a non-system app except through the
+actions an app puts on its own notification; that is deferred.
+
+## How the island gets on screen
 
 1. The user turns the island on in `MainActivity`, which calls `FloatboatService.start()`.
 2. `FloatboatService.onStartCommand` promotes itself to a foreground service (type
    `specialUse`), checks the overlay permission, computes the pill layout (see below), then
-   calls `OverlayWindowManager.show(position) { ... }`.
+   calls `OverlayWindowManager.show(position) { ... }` with the (initially hidden) island.
 3. `OverlayWindowManager` creates a `ComposeOverlayHost` and adds its view to the window
    manager as a `TYPE_APPLICATION_OVERLAY` window.
 4. On stop or destroy, the service calls `OverlayWindowManager.hide()`, which removes the
@@ -112,18 +157,18 @@ and `removeViewImmediate` tolerate the view already being gone.
 
 ## Planned structure
 
-Later phases add, alongside the packages above:
+Later phases add:
 
-- `island/` — `IslandState`, `IslandStateMachine`, `IslandEvent`, `IslandPriorityQueue`. The
-  island UI becomes a pure function of `IslandState`.
-- `providers/` — one `EventProvider` (`Flow<IslandEvent>`) per source: media, calls, timers,
-  charging, notifications, connectivity.
-- `settings/` — the remaining settings (theme, behaviour, per-app rules) and their UI.
+- More providers: media (with transport controls), timers, Bluetooth.
+- `IslandPriorityQueue` with two concurrent items (split pill) and rate limiting.
+- `settings/` — theme, behaviour and per-app rules.
 
 ## Testing
 
-- Pure logic (`PillPlacement`, `OnboardingViewModel`, `PlacementSettingsRepository`) is tested
-  with JUnit, MockK and Turbine.
+- Pure logic (`IslandStateMachine`, `PillPlacement`, notification mapping,
+  `OnboardingViewModel`, `PlacementSettingsRepository`) is tested with JUnit, MockK and Turbine.
+- `Island` is tested in a real overlay window under Robolectric for the window size in each
+  state; `TorchProvider` and `ChargingProvider` against Robolectric's system services.
 - `OverlayWindowManager`, `ComposeOverlayHost` and `CutoutDetector` are tested with Robolectric on API 28 and 35,
   which runs the real framework window and Compose code on the JVM. These cover both the
   pre- and post-Android 11 window-context paths.
