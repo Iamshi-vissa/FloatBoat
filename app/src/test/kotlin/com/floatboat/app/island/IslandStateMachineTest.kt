@@ -246,4 +246,30 @@ class IslandStateMachineTest {
 
         assertEquals(IslandState.Compact(torch), machine.state.value)
     }
+
+    @Test
+    fun `collapse returns an expanded island to compact`() = runTest {
+        val machine = machine()
+        machine.onSignal(Show(torch))
+        machine.onTap()
+
+        machine.collapse()
+
+        assertEquals(IslandState.Compact(torch), machine.state.value)
+    }
+
+    @Test
+    fun `paused media lingers briefly then hides, playing media stays`() = runTest {
+        val machine = machine()
+        val playing = IslandEvent.Media("com.player", "Song", "Artist", true, 0, 0, 1f, 0, null)
+        machine.onSignal(Show(playing))
+        advance(60_000)
+        assertEquals(IslandState.Compact(playing), machine.state.value)
+
+        val paused = playing.copy(isPlaying = false)
+        machine.onSignal(Show(paused))
+        assertEquals(IslandState.Compact(paused), machine.state.value)
+        advance(4_000)
+        assertEquals(IslandState.Hidden, machine.state.value)
+    }
 }

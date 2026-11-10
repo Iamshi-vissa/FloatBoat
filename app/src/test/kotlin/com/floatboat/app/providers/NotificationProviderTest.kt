@@ -6,6 +6,7 @@ import com.floatboat.app.island.IslandSignal
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationProviderTest {
@@ -53,19 +54,72 @@ class NotificationProviderTest {
     }
 
     @Test
+    fun `call actions offered by the calling app are carried on the event`() {
+        val event = NotificationProvider.toEvent(
+            info(category = "call").copy(hasAnswerAction = true, hasDeclineAction = true),
+            own,
+        ) as IslandEvent.Call
+
+        assertTrue(event.canAnswer)
+        assertTrue(event.canDecline)
+    }
+
+    @Test
     fun `posted and removed notifications are emitted as signals`() = runTest {
         val provider = NotificationProvider()
 
         provider.signals.test {
-            provider.onPosted(info(), own)
+            provider.onPosted(info(), own, actions = null, nowMs = 0)
             assertEquals(
                 IslandSignal.Show(IslandEvent.Notification("key", "com.chat", "Chat", "Ravi", "Hello")),
                 awaitItem(),
             )
 
-            provider.onPosted(info(isOngoing = true), own)
+            provider.onPosted(info(isOngoing = true), own, actions = null, nowMs = 10_000)
             provider.onRemoved("key")
             assertEquals(IslandSignal.End("key"), awaitItem())
         }
     }
+
+    @Test
+    fun `a burst from one app pops the island once, other apps are unaffected`() = runTest {
+        val provider = NotificationProvider()
+
+        provider.signals.test {
+            provider.onPosted(info(), own, null, nowMs = 1_000)
+            provider.onPosted(info(), own, null, nowMs = 1_200)
+            provider.onPosted(info(packageName = "com.mail"), own, null, nowMs = 1_300)
+            provider.onPosted(info(), own, null, nowMs = 1_000 + NotificationProvider.MIN_INTERVAL_MS)
+
+            assertEquals("com.chat", (awaitItem().event()).packageName)
+            assertEquals("com.mail", (awaitItem().event()).packageName)
+            assertEquals("com.chat", (awaitItem().event()).packageName)
+        }
+    }
+
+    @Test
+    fun `calls are never rate limited`() = runTest {
+        val provider = NotificationProvider()
+
+        provider.signals.test {
+            provider.onPosted(info(category = "call"), own, null, nowMs = 0)
+            provider.onPosted(info(category = "call"), own, null, nowMs = 1)
+
+            awaitItem()
+            awaitItem()
+        }
+    }
+
+    @Test
+    fun `apps that posted are remembered for the mute list`() {
+        val provider = NotificationProvider()
+
+        provider.onPosted(info(), own, null, nowMs = 0)
+        provider.onPosted(info(packageName = own), own, null, nowMs = 0)
+        provider.onPosted(info(category = "call", packageName = "com.dialer"), own, null, nowMs = 0)
+
+        assertEquals(mapOf("com.chat" to "Chat"), provider.recentApps.value)
+    }
+
+    private fun IslandSignal.event() = (this as IslandSignal.Show).event as IslandEvent.Notification
 }

@@ -73,6 +73,12 @@ class IslandStateMachine(
         publish()
     }
 
+    /** Back to compact, e.g. after the user acted on the expanded island. */
+    fun collapse() {
+        stopExpanding()
+        publish()
+    }
+
     /** Drops everything, e.g. when the island is switched off. */
     fun clear() {
         active.clear()

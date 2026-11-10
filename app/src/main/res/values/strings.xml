@@ -10,11 +10,16 @@
     <string name="notifications_step_body">Optional. Android shows a quiet status notification while the pill is running, with a button to stop it.</string>
     <string name="notification_access_step_title">Notification access</string>
     <string name="notification_access_step_body">Optional. Lets the pill pop up for incoming calls and new notifications. Floatboat reads the app name, title and text only to show them in the pill. Nothing is stored or sent anywhere.</string>
+    <string name="bluetooth_step_title">Nearby devices</string>
+    <string name="bluetooth_step_body">Optional. Lets the pill show which Bluetooth device just connected, such as earbuds or a car. Floatboat never scans for devices.</string>
+    <string name="battery_step_title">Keep running in the background</string>
+    <string name="battery_step_body">Optional but recommended. Some phones stop background apps to save battery, which makes the pill stop appearing. Choose All apps, find Floatboat and pick the option that turns optimisation off. On Xiaomi, Oppo, Vivo, Realme, Infinix and Tecno phones, also allow Auto-start for Floatboat in the phone settings.</string>
+    <string name="battery_step_action">Open battery settings</string>
     <string name="action_grant">Grant</string>
     <string name="status_granted">Granted</string>
 
     <string name="island_step_title">Floating pill</string>
-    <string name="island_step_body_ready">Turn the pill on. It stays hidden and pops up for the torch, charging, calls and notifications. Tap it for details, swipe it up to dismiss.</string>
+    <string name="island_step_body_ready">Turn the pill on. It stays hidden and pops up when something happens. Tap it for details, swipe it up to dismiss, press and hold to open the app it came from.</string>
     <string name="island_step_body_blocked">Grant \"Display over other apps\" first.</string>
     <string name="island_switch_description">Show the floating pill</string>
 
@@ -43,4 +48,27 @@
     <string name="event_call_title">Call</string>
     <string name="event_call_compact">Call</string>
     <string name="event_notification_fallback_title">New notification</string>
+    <string name="event_bluetooth_subtitle">Connected</string>
+    <string name="action_play">Play</string>
+    <string name="action_pause">Pause</string>
+    <string name="action_next">Next track</string>
+    <string name="action_previous">Previous track</string>
+    <string name="action_answer">Answer</string>
+    <string name="action_decline">Decline</string>
+
+    <string name="events_title">What pops the pill</string>
+    <string name="events_torch">Torch</string>
+    <string name="events_charging">Charging</string>
+    <string name="events_media">Music and media</string>
+    <string name="events_bluetooth">Bluetooth devices</string>
+    <string name="events_calls">Calls</string>
+    <string name="events_notifications">Notifications</string>
+    <string name="events_needs_access">Needs notification access</string>
+    <string name="events_needs_nearby">Needs the Nearby devices permission</string>
+    <string name="apps_title">Notification apps</string>
+    <string name="apps_body">Turn off apps you do not want popping the pill. Apps appear here after they send a notification.</string>
+    <string name="behaviour_title">Behaviour</string>
+    <string name="behaviour_haptics">Vibrate on touch</string>
+    <string name="behaviour_boot">Start when the phone starts</string>
+    <string name="behaviour_fullscreen">Hide in fullscreen apps and games</string>
 </resources>

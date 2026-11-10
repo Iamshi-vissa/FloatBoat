@@ -31,6 +31,9 @@ class OnboardingViewModelTest {
         every { permissions.canPostNotifications() } returns false
         every { permissions.notificationPermissionIsRuntime } returns true
         every { permissions.hasNotificationAccess() } returns false
+        every { permissions.bluetoothPermissionIsRuntime } returns true
+        every { permissions.canSeeBluetoothDevices() } returns false
+        every { permissions.isBatteryOptimized() } returns true
     }
 
     @After
@@ -48,6 +51,9 @@ class OnboardingViewModelTest {
                 showNotificationStep = true,
                 notificationsGranted = false,
                 notificationAccessGranted = false,
+                showBluetoothStep = true,
+                bluetoothGranted = false,
+                batteryOptimized = true,
                 islandRunning = false,
             ),
             viewModel.uiState.value,

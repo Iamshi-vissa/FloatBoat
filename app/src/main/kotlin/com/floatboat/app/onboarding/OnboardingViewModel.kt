@@ -18,6 +18,10 @@ data class OnboardingUiState(
     val showNotificationStep: Boolean,
     val notificationsGranted: Boolean,
     val notificationAccessGranted: Boolean,
+    /** False on Android 11 and below, where Bluetooth needs no runtime permission. */
+    val showBluetoothStep: Boolean,
+    val bluetoothGranted: Boolean,
+    val batteryOptimized: Boolean,
     val islandRunning: Boolean,
 )
 
@@ -31,6 +35,8 @@ class OnboardingViewModel @Inject constructor(
         val overlay: Boolean,
         val notifications: Boolean,
         val notificationAccess: Boolean,
+        val bluetooth: Boolean,
+        val batteryOptimized: Boolean,
     )
 
     private val permissionState = MutableStateFlow(readPermissions())
@@ -55,6 +61,8 @@ class OnboardingViewModel @Inject constructor(
         overlay = permissions.canDrawOverlays(),
         notifications = permissions.canPostNotifications(),
         notificationAccess = permissions.hasNotificationAccess(),
+        bluetooth = permissions.canSeeBluetoothDevices(),
+        batteryOptimized = permissions.isBatteryOptimized(),
     )
 
     private fun toUiState(permissions: Permissions, running: Boolean) = OnboardingUiState(
@@ -62,6 +70,9 @@ class OnboardingViewModel @Inject constructor(
         showNotificationStep = this.permissions.notificationPermissionIsRuntime,
         notificationsGranted = permissions.notifications,
         notificationAccessGranted = permissions.notificationAccess,
+        showBluetoothStep = this.permissions.bluetoothPermissionIsRuntime,
+        bluetoothGranted = permissions.bluetooth,
+        batteryOptimized = permissions.batteryOptimized,
         // The service removes itself if the overlay permission is revoked; never show "on"
         // without the permission even if the two updates arrive out of order.
         islandRunning = running && permissions.overlay,

@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import com.floatboat.app.core.cutout.PillMetrics
+import com.floatboat.app.island.IslandAction
 import com.floatboat.app.island.IslandEvent
 import com.floatboat.app.island.IslandState
 
@@ -66,6 +67,18 @@ object PillDefaults {
     const val MORPH_STIFFNESS = Spring.StiffnessMediumLow
 }
 
+/** What the island reports back. Kept in one object so call sites stay readable. */
+class IslandCallbacks(
+    /** Tap on the island body: toggle compact / expanded. */
+    val onTap: () -> Unit,
+    /** Swipe up. */
+    val onDismiss: () -> Unit,
+    /** Long-press: open whatever the event came from. */
+    val onOpen: (IslandEvent) -> Unit,
+    /** A button in the expanded island. */
+    val onAction: (IslandEvent, IslandAction) -> Unit,
+)
+
 /**
  * The island. A pure function of [state]: hidden draws nothing, compact and expanded morph
  * into each other with a spring.
@@ -80,10 +93,9 @@ fun Island(
     state: IslandState,
     compactSize: DpSize,
     expandedSize: DpSize,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-    onDismiss: () -> Unit,
+    callbacks: IslandCallbacks,
     modifier: Modifier = Modifier,
+    hapticsEnabled: Boolean = true,
 ) {
     // Keep drawing the last event while the island animates out.
     var lastEvent by remember { mutableStateOf<IslandEvent?>(null) }
@@ -109,9 +121,8 @@ fun Island(
                     expanded = state is IslandState.Expanded,
                     compactSize = compactSize,
                     expandedSize = expandedSize,
-                    onTap = onTap,
-                    onLongPress = onLongPress,
-                    onDismiss = onDismiss,
+                    callbacks = callbacks,
+                    hapticsEnabled = hapticsEnabled,
                 )
             }
         }
@@ -124,29 +135,33 @@ private fun IslandBody(
     expanded: Boolean,
     compactSize: DpSize,
     expandedSize: DpSize,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-    onDismiss: () -> Unit,
+    callbacks: IslandCallbacks,
+    hapticsEnabled: Boolean,
 ) {
+    // Events with buttons need more room than the standard expanded island.
+    val fullExpandedSize = DpSize(
+        expandedSize.width,
+        expandedSize.height + expandedExtraHeight(event),
+    )
     val morph = spring<androidx.compose.ui.unit.Dp>(
         dampingRatio = PillDefaults.MORPH_DAMPING,
         stiffness = PillDefaults.MORPH_STIFFNESS,
     )
-    val target = if (expanded) expandedSize else compactSize
+    val target = if (expanded) fullExpandedSize else compactSize
     val width by animateDpAsState(target.width, morph, label = "islandWidth")
     val height by animateDpAsState(target.height, morph, label = "islandHeight")
     val morphing = width != target.width || height != target.height
 
-    val content = islandContent(event)
+    val description = eventDescription(event)
     val view = LocalView.current
-    val currentOnTap by rememberUpdatedState(onTap)
-    val currentOnLongPress by rememberUpdatedState(onLongPress)
-    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val currentCallbacks by rememberUpdatedState(callbacks)
+    val currentEvent by rememberUpdatedState(event)
+    val currentHaptics by rememberUpdatedState(hapticsEnabled)
 
     val windowSize = if (expanded || morphing) {
         DpSize(
-            expandedSize.width * PillDefaults.ANIMATION_SLACK,
-            expandedSize.height * PillDefaults.ANIMATION_SLACK,
+            fullExpandedSize.width * PillDefaults.ANIMATION_SLACK,
+            fullExpandedSize.height * PillDefaults.ANIMATION_SLACK,
         )
     } else {
         compactSize
@@ -157,16 +172,20 @@ private fun IslandBody(
                 .size(width, height)
                 .clip(RoundedCornerShape(min(height / 2, PillDefaults.MaxCornerRadius)))
                 .background(Color.Black)
-                .semantics { contentDescription = content.description }
+                .semantics { contentDescription = description }
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onTap = {
-                            view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
-                            currentOnTap()
+                            if (currentHaptics) {
+                                view.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
+                            }
+                            currentCallbacks.onTap()
                         },
                         onLongPress = {
-                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-                            currentOnLongPress()
+                            if (currentHaptics) {
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            }
+                            currentCallbacks.onOpen(currentEvent)
                         },
                     )
                 }
@@ -177,7 +196,7 @@ private fun IslandBody(
                         onVerticalDrag = { _, amount -> dragged += amount },
                         onDragEnd = {
                             if (dragged < -PillDefaults.DismissDragThreshold.toPx()) {
-                                currentOnDismiss()
+                                currentCallbacks.onDismiss()
                             }
                         },
                     )
@@ -185,9 +204,13 @@ private fun IslandBody(
         ) {
             Crossfade(targetState = expanded, label = "islandContent") { showExpanded ->
                 if (showExpanded) {
-                    ExpandedContent(content, compactRowHeight = compactSize.height)
+                    ExpandedContent(
+                        event = event,
+                        compactRowHeight = compactSize.height,
+                        onAction = { action -> currentCallbacks.onAction(currentEvent, action) },
+                    )
                 } else {
-                    CompactContent(content)
+                    CompactContent(event)
                 }
             }
         }

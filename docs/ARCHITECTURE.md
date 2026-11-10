@@ -21,21 +21,26 @@ com.floatboat.app
  │   └─ permissions/
  │       └─ PermissionManager      Overlay + notification permission checks and intents
  ├─ island/
- │   ├─ IslandEvent                Events, provider signals and IslandState
+ │   ├─ IslandEvent                Events, actions, provider signals and IslandState
  │   ├─ IslandStateMachine         Signals + gestures -> IslandState
+ │   ├─ IslandPreferences          User choices; decides which events are allowed
+ │   ├─ IslandActionHandler        Opens source apps, presses media / call buttons
  │   └─ ui/                        Island (animated pill) and per-event content
  ├─ providers/
  │   ├─ EventProvider              Interface: Flow<IslandSignal>
- │   ├─ TorchProvider              CameraManager torch callback
+ │   ├─ MediaProvider              Active media session: metadata, state, transport controls
+ │   ├─ NotificationProvider       Notifications and calls from the listener service
+ │   ├─ BluetoothProvider          Device connected / disconnected broadcasts
  │   ├─ ChargingProvider           Power connected / disconnected broadcasts
- │   └─ NotificationProvider       Notifications and calls from the listener service
+ │   └─ TorchProvider              CameraManager torch callback
  ├─ services/
  │   ├─ FloatboatService           Foreground service; owns overlay and state machine
  │   ├─ FloatboatNotificationListener  Forwards notifications to NotificationProvider
+ │   ├─ BootReceiver               Restores the island after reboot or app update
  │   └─ IslandServiceState         Process-wide "is the island switched on" flag
  ├─ onboarding/                    OnboardingViewModel + OnboardingScreen
- ├─ settings/                      PlacementSettings, its repository (DataStore), view model
- │                                 and the "Position and size" card
+ ├─ settings/                      Preference and placement repositories (DataStore), view
+ │                                 models and the settings cards
  └─ ui/theme/                      Material 3 theme for in-app screens
 ```
 
@@ -53,9 +58,20 @@ events and publishes one `IslandState`:
 - `Expanded(event)` after a tap; it collapses after 6 seconds, on a second tap, or when a
   more important event takes over.
 
-Momentary events (charging, notifications) carry a duration and remove themselves; the
-countdown pauses while expanded. Ongoing events (torch, call) stay until their source ends
-them. Swipe-up dismisses the current event and reveals the next one, if any.
+Momentary events (charging, notifications, Bluetooth, paused media) carry a duration and
+remove themselves; the countdown pauses while expanded. Ongoing events (playing media, call,
+torch) stay until their source ends them. Swipe-up dismisses the current event and reveals
+the next one, if any; a dismissed ongoing event returns the next time its source reports
+(for music, the next track or play/pause).
+
+Before a `Show` signal reaches the state machine, the service checks
+`IslandPreferences.allows(event)`, which applies the per-type switches and the muted-app list.
+
+Long-press and the expanded island's buttons go through `IslandActionHandler`. It fires the
+source app's own `PendingIntent`s (a notification's content intent, a call notification's
+answer / decline intents, the media session's activity) or calls the media session's transport
+controls. Since Android 14 a background sender must explicitly opt in to lending its
+activity-start privilege, which Floatboat holds because it shows an overlay.
 
 `Island` is a pure function of `IslandState`. The overlay window is `WRAP_CONTENT` around it,
 so while hidden the window is a 1 dp transparent dot that shows nothing and takes no touches.
@@ -66,6 +82,17 @@ compact size when it has finished; the black pill animates inside it.
 Providers only register system callbacks while the service collects them, and none of them
 poll, so an idle island does no work.
 
+### Media
+
+Reading other apps' media sessions is only permitted for an enabled notification listener, so
+`MediaProvider` waits for `NotificationAccessState` (set when the system connects the
+listener) and then uses `MediaSessionManager` with the listener's component. It follows the
+session that is playing, registers a `MediaController.Callback` on it, and maps each change
+through `MediaSignalMapper`: playing shows; a pause right after playing shows once more and
+then expires; anything else ends the event. Playback position is never polled by the
+provider: the event carries a position snapshot and the expanded UI extrapolates it once a
+second, only while it is on screen.
+
 ### Notifications and calls
 
 `FloatboatNotificationListener` is bound by the system once the user grants notification
@@ -73,8 +100,21 @@ access. It extracts app name, title, text, category and flags and hands them to 
 `NotificationProvider` singleton, whose pure `toEvent()` decides what reaches the island:
 category `call` becomes an ongoing `Call` event; other non-ongoing notifications become
 momentary `Notification` events; our own, ongoing, group-summary and empty notifications are
-dropped. Call control (answer/decline) is not possible for a non-system app except through the
-actions an app puts on its own notification; that is deferred.
+dropped. Bursts from one app within 1.5 seconds pop the island once.
+
+A non-system app cannot answer or end calls itself. What it can do is fire the intents a
+call-style notification (Android 12+) carries for exactly that purpose; when present, the
+expanded island shows Answer and Decline. Dialers that do not use call-style notifications get
+the caller display only.
+
+### Fullscreen, boot and background limits
+
+- With "Hide in fullscreen" on, the overlay treats a hidden status bar (reported through its
+  own window insets) as "a fullscreen app is showing" and renders `Hidden`.
+- `BootReceiver` restarts the service after `BOOT_COMPLETED` or an app update when the user
+  had the island on, kept "start on boot" enabled, and the overlay permission is still held.
+- The app shows a "Keep running in the background" card while battery optimisation applies to
+  it, pointing at the system exemption list and at OEM auto-start settings.
 
 ## How the island gets on screen
 
@@ -155,18 +195,18 @@ and `removeViewImmediate` tolerate the view already being gone.
 - Notification channel importance is `LOW` (silent, no heads-up).
 - `START_STICKY`, so the system restarts the island after a low-memory kill.
 
-## Planned structure
+## Not built yet
 
-Later phases add:
-
-- More providers: media (with transport controls), timers, Bluetooth.
-- `IslandPriorityQueue` with two concurrent items (split pill) and rate limiting.
-- `settings/` — theme, behaviour and per-app rules.
+- Timer and stopwatch events.
+- Two concurrent events side by side (split pill).
+- Theme customisation (pill colour, corner radius, opacity, accent, Material You).
+- The roadmap tiers in the project brief (live activities, navigation, quick actions,
+  widgets, SDK and so on).
 
 ## Testing
 
-- Pure logic (`IslandStateMachine`, `PillPlacement`, notification mapping,
-  `OnboardingViewModel`, `PlacementSettingsRepository`) is tested with JUnit, MockK and Turbine.
+- Pure logic (`IslandStateMachine`, `IslandPreferences`, `MediaSignalMapper`, `PillPlacement`,
+  notification mapping and rate limiting, the repositories, `OnboardingViewModel`) is tested with JUnit, MockK and Turbine.
 - `Island` is tested in a real overlay window under Robolectric for the window size in each
   state; `TorchProvider` and `ChargingProvider` against Robolectric's system services.
 - `OverlayWindowManager`, `ComposeOverlayHost` and `CutoutDetector` are tested with Robolectric on API 28 and 35,

@@ -1,12 +1,16 @@
 package com.floatboat.app.services
 
 import android.app.Notification
+import android.app.PendingIntent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.os.Build
+import android.os.SystemClock
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import androidx.core.os.BundleCompat
+import com.floatboat.app.providers.NotificationAccessState
 import com.floatboat.app.providers.NotificationInfo
+import com.floatboat.app.providers.NotificationIntents
 import com.floatboat.app.providers.NotificationProvider
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -21,12 +25,31 @@ import javax.inject.Inject
 class FloatboatNotificationListener : NotificationListenerService() {
 
     @Inject lateinit var provider: NotificationProvider
+    @Inject lateinit var accessState: NotificationAccessState
+
+    override fun onListenerConnected() {
+        accessState.setConnected(true)
+    }
+
+    override fun onListenerDisconnected() {
+        accessState.setConnected(false)
+    }
+
+    override fun onDestroy() {
+        accessState.setConnected(false)
+        super.onDestroy()
+    }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val notification = sbn.notification ?: return
         val extras = notification.extras
+        // Call-style notifications (Android 12+) carry their answer / decline / hang-up
+        // intents as extras; that is the only supported way for another app to act on a call.
+        val answer = BundleCompat.getParcelable(extras, EXTRA_ANSWER, PendingIntent::class.java)
+        val decline = BundleCompat.getParcelable(extras, EXTRA_DECLINE, PendingIntent::class.java)
+            ?: BundleCompat.getParcelable(extras, EXTRA_HANG_UP, PendingIntent::class.java)
         provider.onPosted(
-            NotificationInfo(
+            info = NotificationInfo(
                 key = sbn.key,
                 packageName = sbn.packageName,
                 appName = appName(sbn),
@@ -35,8 +58,12 @@ class FloatboatNotificationListener : NotificationListenerService() {
                 category = notification.category,
                 isOngoing = sbn.isOngoing,
                 isGroupSummary = notification.flags and Notification.FLAG_GROUP_SUMMARY != 0,
+                hasAnswerAction = answer != null,
+                hasDeclineAction = decline != null,
             ),
             ownPackage = packageName,
+            actions = NotificationIntents(notification.contentIntent, answer, decline),
+            nowMs = SystemClock.elapsedRealtime(),
         )
     }
 
@@ -50,13 +77,11 @@ class FloatboatNotificationListener : NotificationListenerService() {
      * tried first.
      */
     private fun appName(sbn: StatusBarNotification): String {
-        val embedded: ApplicationInfo? =
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                sbn.notification.extras.getParcelable(EXTRA_APP_INFO, ApplicationInfo::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                sbn.notification.extras.getParcelable(EXTRA_APP_INFO)
-            }
+        val embedded = BundleCompat.getParcelable(
+            sbn.notification.extras,
+            EXTRA_APP_INFO,
+            ApplicationInfo::class.java,
+        )
         val info = embedded ?: try {
             packageManager.getApplicationInfo(sbn.packageName, 0)
         } catch (_: PackageManager.NameNotFoundException) {
@@ -68,5 +93,10 @@ class FloatboatNotificationListener : NotificationListenerService() {
     private companion object {
         /** Notification.EXTRA_BUILDER_APPLICATION_INFO, which is not public API. */
         const val EXTRA_APP_INFO = "android.appInfo"
+
+        // Notification.EXTRA_ANSWER_INTENT and friends; public only from API 31.
+        const val EXTRA_ANSWER = "android.answerIntent"
+        const val EXTRA_DECLINE = "android.declineIntent"
+        const val EXTRA_HANG_UP = "android.hangUpIntent"
     }
 }

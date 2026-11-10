@@ -1,5 +1,7 @@
 package com.floatboat.app.island
 
+import android.graphics.Bitmap
+
 /**
  * Something the island can show.
  *
@@ -25,6 +27,42 @@ sealed interface IslandEvent {
         override val durationMs: Long = 4_000
     }
 
+    /**
+     * Music or other media. Stays up while playing; after a pause it lingers briefly and then
+     * goes away. Position is a snapshot: the UI extrapolates from [positionAtElapsedMs].
+     */
+    data class Media(
+        val packageName: String,
+        val title: String,
+        val artist: String,
+        val isPlaying: Boolean,
+        val positionMs: Long,
+        /** `SystemClock.elapsedRealtime()` at which [positionMs] was correct. */
+        val positionAtElapsedMs: Long,
+        val speed: Float,
+        /** Track length, or 0 if unknown (live streams). */
+        val lengthMs: Long,
+        val art: Bitmap?,
+    ) : IslandEvent {
+        override val key = KEY
+        override val priority = 25
+        override val durationMs: Long? get() = if (isPlaying) null else 4_000
+
+        companion object {
+            const val KEY = "media"
+        }
+    }
+
+    data class Bluetooth(val deviceName: String) : IslandEvent {
+        override val key = KEY
+        override val priority = 35
+        override val durationMs: Long = 4_000
+
+        companion object {
+            const val KEY = "bluetooth"
+        }
+    }
+
     data class Notification(
         override val key: String,
         val packageName: String,
@@ -41,11 +79,17 @@ sealed interface IslandEvent {
         val packageName: String,
         val appName: String,
         val caller: String,
+        /** Whether the calling app offers these actions on its notification. */
+        val canAnswer: Boolean = false,
+        val canDecline: Boolean = false,
     ) : IslandEvent {
         override val priority = 100
         override val durationMs: Long? = null
     }
 }
+
+/** Buttons the expanded island can offer. */
+enum class IslandAction { PlayPause, Next, Previous, Answer, Decline }
 
 /** What an event source tells the island. */
 sealed interface IslandSignal {

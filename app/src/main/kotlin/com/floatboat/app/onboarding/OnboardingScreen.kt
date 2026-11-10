@@ -36,9 +36,11 @@ fun OnboardingScreen(
     onGrantOverlay: () -> Unit,
     onGrantNotifications: () -> Unit,
     onGrantNotificationAccess: () -> Unit,
+    onGrantBluetooth: () -> Unit,
+    onOpenBatterySettings: () -> Unit,
     onIslandToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    placementSettings: @Composable () -> Unit = {},
+    settings: @Composable () -> Unit = {},
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -78,13 +80,30 @@ fun OnboardingScreen(
                 granted = state.notificationAccessGranted,
                 onGrant = onGrantNotificationAccess,
             )
+            if (state.showBluetoothStep) {
+                PermissionCard(
+                    title = stringResource(R.string.bluetooth_step_title),
+                    body = stringResource(R.string.bluetooth_step_body),
+                    granted = state.bluetoothGranted,
+                    onGrant = onGrantBluetooth,
+                )
+            }
             IslandCard(
                 enabled = state.overlayGranted,
                 running = state.islandRunning,
                 onToggle = onIslandToggle,
             )
             if (state.overlayGranted) {
-                placementSettings()
+                settings()
+                if (state.batteryOptimized) {
+                    PermissionCard(
+                        title = stringResource(R.string.battery_step_title),
+                        body = stringResource(R.string.battery_step_body),
+                        granted = false,
+                        onGrant = onOpenBatterySettings,
+                        grantLabel = stringResource(R.string.battery_step_action),
+                    )
+                }
             }
 
             Text(
@@ -102,6 +121,7 @@ private fun PermissionCard(
     body: String,
     granted: Boolean,
     onGrant: () -> Unit,
+    grantLabel: String = stringResource(R.string.action_grant),
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -118,7 +138,7 @@ private fun PermissionCard(
                 )
             } else {
                 Button(onClick = onGrant) {
-                    Text(stringResource(R.string.action_grant))
+                    Text(grantLabel)
                 }
             }
         }
@@ -177,11 +197,16 @@ private fun OnboardingScreenPreview() {
                 showNotificationStep = true,
                 notificationsGranted = false,
                 notificationAccessGranted = false,
+                showBluetoothStep = true,
+                bluetoothGranted = false,
+                batteryOptimized = true,
                 islandRunning = false,
             ),
             onGrantOverlay = {},
             onGrantNotifications = {},
             onGrantNotificationAccess = {},
+            onGrantBluetooth = {},
+            onOpenBatterySettings = {},
             onIslandToggle = {},
         )
     }

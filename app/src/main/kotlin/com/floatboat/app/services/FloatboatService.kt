@@ -13,15 +13,22 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.DpSize
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import com.floatboat.app.MainActivity
 import com.floatboat.app.R
 import com.floatboat.app.core.cutout.CutoutDetector
@@ -30,11 +37,16 @@ import com.floatboat.app.core.cutout.PillPlacement
 import com.floatboat.app.core.overlay.OverlayPosition
 import com.floatboat.app.core.overlay.OverlayWindowManager
 import com.floatboat.app.core.permissions.PermissionChecker
+import com.floatboat.app.island.IslandActionHandler
+import com.floatboat.app.island.IslandPreferences
+import com.floatboat.app.island.IslandSignal
 import com.floatboat.app.island.IslandState
 import com.floatboat.app.island.IslandStateMachine
 import com.floatboat.app.island.ui.Island
+import com.floatboat.app.island.ui.IslandCallbacks
 import com.floatboat.app.island.ui.PillDefaults
 import com.floatboat.app.providers.EventProvider
+import com.floatboat.app.settings.IslandPreferencesRepository
 import com.floatboat.app.settings.PlacementSettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.MainScope
@@ -60,7 +72,8 @@ class FloatboatService : Service() {
     @Inject lateinit var serviceState: IslandServiceState
     @Inject lateinit var cutoutDetector: CutoutDetector
     @Inject lateinit var placementSettings: PlacementSettingsRepository
-
+    @Inject lateinit var preferences: IslandPreferencesRepository
+    @Inject lateinit var actions: IslandActionHandler
     @Inject lateinit var providers: Set<@JvmSuppressWildcards EventProvider>
 
     private val scope = MainScope()
@@ -82,7 +95,13 @@ class FloatboatService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_STOP || !permissions.canDrawOverlays()) {
+        if (intent?.action == ACTION_STOP) {
+            // Stopped from the notification: remember it so a reboot does not bring it back.
+            preferences.update { it.copy(enabled = false) }
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        if (!permissions.canDrawOverlays()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -94,10 +113,17 @@ class FloatboatService : Service() {
             IslandOverlayContent(
                 layout = pillLayout,
                 state = stateMachine.state,
+                preferences = preferences.preferences,
                 onConfigurationChanged = ::applyLayout,
-                onTap = stateMachine::onTap,
-                onLongPress = ::openApp,
-                onDismiss = stateMachine::onDismiss,
+                callbacks = IslandCallbacks(
+                    onTap = stateMachine::onTap,
+                    onDismiss = stateMachine::onDismiss,
+                    onOpen = { event ->
+                        actions.open(event)
+                        stateMachine.collapse()
+                    },
+                    onAction = actions::perform,
+                ),
             )
         }
         if (!shown) {
@@ -107,7 +133,7 @@ class FloatboatService : Service() {
         if (!collectorsStarted) {
             collectorsStarted = true
             scope.launch {
-                providers.map { it.signals }.merge().collect(stateMachine::onSignal)
+                providers.map { it.signals }.merge().collect(::onSignal)
             }
             // Follow calibration changes live, and move the window when the island
             // expands (the expanded island may sit differently on off-centre cutouts).
@@ -133,6 +159,14 @@ class FloatboatService : Service() {
         super.onDestroy()
     }
 
+    /** Events the user switched off never reach the island; "end" signals always do. */
+    private fun onSignal(signal: IslandSignal) {
+        if (signal is IslandSignal.Show && !preferences.preferences.value.allows(signal.event)) {
+            return
+        }
+        stateMachine.onSignal(signal)
+    }
+
     private fun computeLayout(): PillLayout = PillPlacement.compute(
         screen = cutoutDetector.detect(),
         settings = placementSettings.settings.value,
@@ -153,13 +187,6 @@ class FloatboatService : Service() {
         },
         yPx = yPx,
     )
-
-    /** Long-press: open Floatboat. Allowed from the background for apps with an overlay. */
-    private fun openApp() {
-        startActivity(
-            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
-    }
 
     /** Returns false if the system refused to promote the service to the foreground. */
     private fun enterForeground(): Boolean {
@@ -253,27 +280,48 @@ class FloatboatService : Service() {
 private fun IslandOverlayContent(
     layout: StateFlow<PillLayout>,
     state: StateFlow<IslandState>,
+    preferences: StateFlow<IslandPreferences>,
     onConfigurationChanged: () -> Unit,
-    onTap: () -> Unit,
-    onLongPress: () -> Unit,
-    onDismiss: () -> Unit,
+    callbacks: IslandCallbacks,
 ) {
     val configuration = LocalConfiguration.current
     LaunchedEffect(configuration) { onConfigurationChanged() }
 
     val current by layout.collectAsState()
     val islandState by state.collectAsState()
+    val prefs by preferences.collectAsState()
+    val fullscreen = statusBarHidden()
+
     with(LocalDensity.current) {
         Island(
-            state = islandState,
+            state = if (prefs.hideInFullscreen && fullscreen) IslandState.Hidden else islandState,
             compactSize = DpSize(current.widthPx.toDp(), current.heightPx.toDp()),
             expandedSize = DpSize(
                 current.expandedWidthPx.toDp(),
                 current.expandedHeightPx.toDp(),
             ),
-            onTap = onTap,
-            onLongPress = onLongPress,
-            onDismiss = onDismiss,
+            callbacks = callbacks,
+            hapticsEnabled = prefs.haptics,
         )
     }
+}
+
+/**
+ * Whether the app underneath has hidden the status bar (video, games). The overlay window is
+ * laid out against the whole screen, so it is told about the system bars like any other
+ * window; no extra permission or polling is involved.
+ */
+@Composable
+private fun statusBarHidden(): Boolean {
+    val root = LocalView.current.rootView
+    var hidden by remember { mutableStateOf(false) }
+    DisposableEffect(root) {
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            hidden = !insets.isVisible(WindowInsetsCompat.Type.statusBars())
+            insets
+        }
+        root.requestApplyInsets()
+        onDispose { ViewCompat.setOnApplyWindowInsetsListener(root, null) }
+    }
+    return hidden
 }

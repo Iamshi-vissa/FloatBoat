@@ -17,6 +17,8 @@ import com.floatboat.app.core.permissions.PermissionManager
 import com.floatboat.app.onboarding.OnboardingScreen
 import com.floatboat.app.onboarding.OnboardingViewModel
 import com.floatboat.app.services.FloatboatService
+import com.floatboat.app.settings.IslandSettingsCards
+import com.floatboat.app.settings.IslandSettingsViewModel
 import com.floatboat.app.settings.PlacementSettingsCard
 import com.floatboat.app.settings.PlacementSettingsViewModel
 import com.floatboat.app.ui.theme.FloatboatTheme
@@ -30,8 +32,9 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: OnboardingViewModel by viewModels()
     private val placementViewModel: PlacementSettingsViewModel by viewModels()
+    private val settingsViewModel: IslandSettingsViewModel by viewModels()
 
-    private val requestNotifications =
+    private val requestPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             viewModel.refreshPermissions()
         }
@@ -42,14 +45,30 @@ class MainActivity : ComponentActivity() {
         setContent {
             val state by viewModel.uiState.collectAsStateWithLifecycle()
             val placement by placementViewModel.settings.collectAsStateWithLifecycle()
+            val preferences by settingsViewModel.preferences.collectAsStateWithLifecycle()
+            val recentApps by settingsViewModel.recentApps.collectAsStateWithLifecycle()
             FloatboatTheme {
                 OnboardingScreen(
                     state = state,
                     onGrantOverlay = ::openOverlaySettings,
                     onGrantNotifications = ::askForNotifications,
-                    onGrantNotificationAccess = ::openNotificationAccessSettings,
+                    onGrantNotificationAccess = {
+                        open(permissionManager.notificationAccessSettingsIntent())
+                    },
+                    onGrantBluetooth = ::askForBluetooth,
+                    onOpenBatterySettings = {
+                        open(permissionManager.batteryOptimizationSettingsIntent())
+                    },
                     onIslandToggle = ::setIslandEnabled,
-                    placementSettings = {
+                    settings = {
+                        IslandSettingsCards(
+                            preferences = preferences,
+                            recentApps = recentApps,
+                            notificationAccessGranted = state.notificationAccessGranted,
+                            bluetoothGranted = state.bluetoothGranted,
+                            onChange = settingsViewModel::update,
+                            onAppMutedChange = settingsViewModel::setAppMuted,
+                        )
                         PlacementSettingsCard(
                             settings = placement,
                             onOffsetXChange = placementViewModel::setOffsetX,
@@ -70,29 +89,35 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openOverlaySettings() {
-        try {
-            startActivity(permissionManager.overlaySettingsIntent())
-        } catch (_: ActivityNotFoundException) {
+        if (!open(permissionManager.overlaySettingsIntent())) {
             // A few OEM builds lack the per-app screen; the app-wide list always exists.
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-        }
-    }
-
-    private fun openNotificationAccessSettings() {
-        try {
-            startActivity(permissionManager.notificationAccessSettingsIntent())
-        } catch (_: ActivityNotFoundException) {
-            // Extremely rare (some Android Go builds). The step simply stays ungranted.
+            open(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
         }
     }
 
     private fun askForNotifications() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+            requestPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    private fun askForBluetooth() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            requestPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
     }
 
     private fun setIslandEnabled(enabled: Boolean) {
+        // Remembered so the island can be restored after a reboot.
+        settingsViewModel.setEnabled(enabled)
         if (enabled) FloatboatService.start(this) else FloatboatService.stop(this)
+    }
+
+    /** Opens a system settings screen; false if this device has no such screen. */
+    private fun open(intent: Intent): Boolean = try {
+        startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
     }
 }

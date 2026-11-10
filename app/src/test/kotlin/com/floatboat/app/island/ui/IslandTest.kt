@@ -14,6 +14,7 @@ import com.floatboat.app.core.overlay.OverlayWindowManager
 import com.floatboat.app.core.overlay.createOverlayWindowContext
 import com.floatboat.app.island.IslandEvent
 import com.floatboat.app.island.IslandState
+import com.floatboat.app.island.ui.IslandCallbacks
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -42,7 +43,7 @@ class IslandTest {
     fun setUp() {
         ShadowSettings.setCanDrawOverlays(true)
         OverlayWindowManager(createOverlayWindowContext(app)).show(OverlayPosition(0, 0)) {
-            Island(state, compact, expanded, onTap = {}, onLongPress = {}, onDismiss = {})
+            Island(state, compact, expanded, IslandCallbacks({}, {}, {}, { _, _ -> }))
         }
         settle()
     }
@@ -95,5 +96,15 @@ class IslandTest {
         settle()
 
         assertTrue(window().width <= px(1f) + 1)
+    }
+
+    @Test
+    fun `expanded music island is taller to fit its controls`() {
+        state = IslandState.Expanded(
+            IslandEvent.Media("com.player", "Song", "Artist", true, 0, 0, 1f, 200_000, null),
+        )
+        settle()
+
+        assertTrue(window().height >= px(88f + 88f))
     }
 }

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -34,6 +35,15 @@ interface PermissionChecker {
 
     /** Notification access: lets the island react to other apps' notifications and calls. */
     fun hasNotificationAccess(): Boolean
+
+    /** False only on Android 12+ when "Nearby devices" has not been granted. */
+    fun canSeeBluetoothDevices(): Boolean
+
+    /** Whether the Bluetooth permission is a runtime one on this OS version. */
+    val bluetoothPermissionIsRuntime: Boolean
+
+    /** Whether the system is allowed to restrict this app in the background. */
+    fun isBatteryOptimized(): Boolean
 }
 
 @Singleton
@@ -53,6 +63,26 @@ class PermissionManager @Inject constructor(
 
     override fun hasNotificationAccess(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(context).contains(context.packageName)
+
+    override val bluetoothPermissionIsRuntime: Boolean
+        get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    override fun canSeeBluetoothDevices(): Boolean =
+        !bluetoothPermissionIsRuntime ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+            PackageManager.PERMISSION_GRANTED
+
+    override fun isBatteryOptimized(): Boolean =
+        !context.getSystemService(PowerManager::class.java)
+            .isIgnoringBatteryOptimizations(context.packageName)
+
+    /**
+     * The system list of battery-optimisation exemptions. The direct "exempt this app" dialog
+     * needs a permission Google Play only allows for a few app categories, so the user picks
+     * Floatboat from the list instead.
+     */
+    fun batteryOptimizationSettingsIntent(): Intent =
+        Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
 
     /** Intent for the system screen where the user grants notification access. */
     fun notificationAccessSettingsIntent(): Intent =
